@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/netip"
+	"regexp"
 	"strings"
 )
 
@@ -22,6 +23,28 @@ func NewIPSet(entries []string) (*IPSet, error) {
 		}
 	}
 	return s, nil
+}
+
+var domainRe = regexp.MustCompile(`^([a-z0-9-]+\.)+[a-z0-9-]+$`)
+
+// ParseRules separa las entradas de via_vps/direct en IPs/CIDR y dominios.
+// Un dominio ("tiktok.com" o "*.tiktok.com") incluye sus subdominios.
+func ParseRules(entries []string) (*IPSet, []string, error) {
+	var ips, domains []string
+	for _, e := range entries {
+		e = strings.ToLower(strings.TrimSpace(e))
+		if _, err := netip.ParseAddr(e); err == nil || strings.Contains(e, "/") {
+			ips = append(ips, e)
+			continue
+		}
+		d := strings.Trim(strings.TrimPrefix(e, "*."), ".")
+		if !domainRe.MatchString(d) {
+			return nil, nil, fmt.Errorf("%q no es una IP, CIDR ni dominio", e)
+		}
+		domains = append(domains, d)
+	}
+	set, err := NewIPSet(ips)
+	return set, domains, err
 }
 
 // ParseIPList lee una IP o CIDR por línea; ignora vacías, comentarios y basura.

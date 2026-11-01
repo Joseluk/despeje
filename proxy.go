@@ -132,7 +132,7 @@ func (p *Proxy) handleStatus(w http.ResponseWriter) {
 		"ips_bloqueadas_ahora": count,
 		"lista_actualizada":    updated,
 		"lista_error":          errStr,
-		"ips_aprendidas":       p.Router.learnedCount(),
+		"ips_aprendidas":       p.Router.learnedList(),
 		"conexiones": map[string]int64{
 			"directas": p.Router.nDirect.Load(),
 			"vps":      p.Router.nVPS.Load(),

@@ -145,11 +145,24 @@ func startFakeVPS(t *testing.T) *fakeVPS {
 	return v
 }
 
-type failingDialer struct{ calls atomic.Int64 }
+// failingDialer simula la conexión directa: falla con timeout (como un
+// bloqueo de LaLiga), con otro error (refused) o, si ok, conecta con "to".
+type failingDialer struct {
+	calls   atomic.Int64
+	refused bool
+	ok      atomic.Bool
+	to      string
+}
 
 func (f *failingDialer) DialContext(ctx context.Context, network, addr string) (net.Conn, error) {
 	f.calls.Add(1)
-	return nil, errors.New("simulado: IP bloqueada")
+	if f.ok.Load() {
+		return net.Dial("tcp", f.to)
+	}
+	if f.refused {
+		return nil, errors.New("simulado: connection refused")
+	}
+	return nil, context.DeadlineExceeded
 }
 
 func setup(t *testing.T, mutate func(*Router)) (*Router, *fakeVPS, string) {
@@ -390,5 +403,98 @@ func TestVPSDialPrefersIPv4ThenName(t *testing.T) {
 	conn.Close()
 	if got := vps.requested(); len(got) != 3 || got[1] != "198.51.100.7:80" || got[2] != "gol.test:80" {
 		t.Fatalf("peticiones al VPS: %v", got)
+	}
+}
+
+func TestFallbackOnlyOnTimeout(t *testing.T) {
+	ts := newTarget(t, false)
+	fd := &failingDialer{refused: true}
+	r, vps, _ := setup(t, func(r *Router) { r.DirectDialer = fd })
+	vps.redirect["104.18.50.34:80"] = ts.Listener.Addr().String()
+	if _, err := r.DialContext(context.Background(), "tcp", "104.18.50.34:80"); err == nil {
+		t.Fatal("un reset/refused no debe ir por el VPS")
+	}
+	if vps.forwards.Load() != 0 || len(r.learnedList()) != 0 {
+		t.Fatal("no debía usar ni aprender el VPS")
+	}
+}
+
+func TestNoFallbackWithoutActiveBlocks(t *testing.T) {
+	ts := newTarget(t, false)
+	fd := &failingDialer{}
+	r, vps, _ := setup(t, func(r *Router) {
+		r.DirectDialer = fd
+		empty, _ := NewIPSet(nil)
+		r.Blocked.set.Store(empty) // hayahora dice: 0 IPs bloqueadas
+	})
+	vps.redirect["104.18.50.34:80"] = ts.Listener.Addr().String()
+	if _, err := r.DialContext(context.Background(), "tcp", "104.18.50.34:80"); err == nil {
+		t.Fatal("sin bloqueos activos un timeout no debe ir por el VPS")
+	}
+	if vps.forwards.Load() != 0 {
+		t.Fatal("pasó por el VPS")
+	}
+}
+
+func TestRecheckForgetsRecoveredIP(t *testing.T) {
+	ts := newTarget(t, false)
+	fd := &failingDialer{to: ts.Listener.Addr().String()}
+	r, vps, _ := setup(t, func(r *Router) { r.DirectDialer = fd })
+	vps.redirect["104.18.50.34:80"] = ts.Listener.Addr().String()
+
+	conn, err := r.DialContext(context.Background(), "tcp", "104.18.50.34:80")
+	if err != nil {
+		t.Fatal(err)
+	}
+	conn.Close()
+	if l := r.learnedList(); len(l) != 1 || l[0].Host != "104.18.50.34" {
+		t.Fatalf("aprendidas: %+v", l)
+	}
+
+	r.recheckOnce(context.Background()) // sigue bloqueada: se queda
+	if len(r.learnedList()) != 1 {
+		t.Fatal("la olvidó aunque sigue sin responder")
+	}
+	fd.ok.Store(true) // termina el partido
+	r.recheckOnce(context.Background())
+	if len(r.learnedList()) != 0 {
+		t.Fatal("no olvidó una IP que ya responde en directo")
+	}
+	if got := r.reasonVPS([]netip.Addr{netip.MustParseAddr("104.18.50.34")}); got != "" {
+		t.Fatalf("sigue yendo por el VPS: %q", got)
+	}
+}
+
+func TestDomainRules(t *testing.T) {
+	ips, domains, err := ParseRules([]string{"1.2.3.4", "10.0.0.0/8", "TikTok.com", "*.ttwstatic.com"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ips.Len() != 2 || len(domains) != 2 || domains[0] != "tiktok.com" || domains[1] != "ttwstatic.com" {
+		t.Fatalf("ips=%d domains=%v", ips.Len(), domains)
+	}
+	if _, _, err := ParseRules([]string{"no es nada"}); err == nil {
+		t.Fatal("debía rechazar una entrada inválida")
+	}
+	for host, want := range map[string]bool{
+		"tiktok.com": true, "www.tiktok.com": true, "WWW.TIKTOK.COM.": true,
+		"nottiktok.com": false, "tiktok.com.evil.net": false,
+	} {
+		if got := matchDomain(host, domains); got != want {
+			t.Errorf("matchDomain(%q) = %v", host, got)
+		}
+	}
+
+	// Un dominio en via_vps va por el VPS aunque no se resuelva en local.
+	ts := newTarget(t, false)
+	r, vps, _ := setup(t, func(r *Router) { r.ViaVPSDomains = []string{"gol.test"} })
+	vps.redirect["www.gol.test:80"] = ts.Listener.Addr().String()
+	conn, err := r.DialContext(context.Background(), "tcp", "www.gol.test:80")
+	if err != nil {
+		t.Fatal(err)
+	}
+	conn.Close()
+	if vps.forwards.Load() != 1 {
+		t.Fatal("no fue por el VPS")
 	}
 }

@@ -86,11 +86,11 @@ func main() {
 	defer up.Close()
 
 	cdn, _ := NewIPSet(cloudflareRanges)
-	via, err := NewIPSet(cfg.ViaVPS)
+	via, viaDomains, err := ParseRules(cfg.ViaVPS)
 	if err != nil {
 		fatal("via_vps: %v", err)
 	}
-	direct, err := NewIPSet(cfg.Direct)
+	direct, directDomains, err := ParseRules(cfg.Direct)
 	if err != nil {
 		fatal("direct: %v", err)
 	}
@@ -102,6 +102,8 @@ func main() {
 		CDN:           cdn,
 		ViaVPS:        via,
 		Direct:        direct,
+		ViaVPSDomains: viaDomains,
+		DirectDomains: directDomains,
 		Fallback:      *cfg.Fallback,
 		DirectTimeout: time.Duration(cfg.DirectTimeout),
 		Upstream:      up,
@@ -130,6 +132,7 @@ func main() {
 		cfg.Listen, cfg.Mode, cfg.ISP, cfg.VPS.User, cfg.VPS.Host)
 
 	go bl.Run(ctx, time.Duration(cfg.Refresh))
+	go router.RecheckLearned(ctx)
 	go func() {
 		if _, err := up.clientFor(ctx); err != nil {
 			log.Printf("aún no hay conexión con el VPS (se reintentará al usarlo): %v", err)

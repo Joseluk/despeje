@@ -17,8 +17,10 @@ navegador ──► despeje (127.0.0.1:9119)
 ```
 
 - **Nada que instalar en el VPS**: solo hace falta el `sshd` que ya tiene.
-- **Solo lo bloqueado**: lista actualizada cada 2 minutos; si una conexión
-  directa falla, se reintenta por el VPS y se recuerda esa IP una hora.
+- **Solo lo bloqueado**: lista actualizada cada 2 minutos. Si durante un
+  partido una conexión directa se queda colgada (así es como se ve un bloqueo),
+  se reintenta por el VPS; esa IP se vuelve a probar en directo cada 2 minutos
+  y deja de ir por el VPS en cuanto responde.
 - **No te deja sin internet**: si despeje se cae, Windows vuelve a salir en directo.
 - **Seguro**: el usuario del VPS solo puede abrir túneles (sin shell) y la huella
   del servidor se verifica con `known_hosts`.
@@ -86,13 +88,21 @@ No hay nada que hacer: navega como siempre. Para ver qué está pasando:
 
 | `mode` | qué va por el VPS |
 |--------|-------------------|
-| `auto` | solo las IPs bloqueadas **ahora** + las que fallen en directo (recomendado) |
+| `auto` | solo las IPs bloqueadas **ahora** + las que se cuelguen en directo durante un partido (recomendado) |
 | `cdn`  | todos los rangos de Cloudflare **siempre**, haya fútbol o no |
 | `all`  | todo el tráfico (salvo tu red local) |
 
 `isp` elige la lista de tu operador: `any`, `movistar`, `vodafone`, `orange`,
-`digi`, `masmovil`. `via_vps` y `direct` aceptan IPs o rangos CIDR para forzar
-una ruta.
+`digi`, `masmovil`. `via_vps` y `direct` fuerzan una ruta y aceptan IPs, rangos
+CIDR o dominios (un dominio incluye sus subdominios):
+
+```json
+"direct": ["tiktok.com", "netflix.com"],
+"via_vps": ["ejemplo-siempre-bloqueado.com", "203.0.113.0/24"]
+```
+
+`fallback: false` desactiva el reintento automático por el VPS: solo irán por
+ahí las IPs de la lista.
 
 ## Si algo falla
 
@@ -110,6 +120,7 @@ que prueba cada pieza por separado:
 | `El VPS no deja abrir túneles a este usuario` | `sshd` tiene `AllowTcpForwarding no`, `DisableForwarding yes` o un `PermitOpen` restrictivo para `despeje`. Revisa `sshd -T -C user=despeje,host=x,addr=1.2.3.4`. |
 | `El VPS acepta el túnel pero no logra salir a internet` | El VPS no llega a la web: comprueba con `curl -4 https://www.cloudflare.com` desde el VPS, y que no esté también en España. |
 | `Tu conexión bloquea ...? no, responde en directo` | No es un error: ahora mismo esa IP no está bloqueada para ti. |
+| Una web te da «Access Denied» o te pide verificar que no eres un robot | Seguramente esa conexión salió por el VPS y el servicio desconfía de IPs de centros de datos (pasa con Akamai: TikTok, algunos bancos…). Míralo en `ultimas_por_vps` / `ips_aprendidas` de <http://127.0.0.1:9119/status> y añade el dominio a `direct`. |
 
 Si el instalador se cortó en la comprobación, vuelve a ejecutarlo: con «Solo
 actualizar» no toca el VPS y termina de dejarlo en marcha.
@@ -137,6 +148,13 @@ por HTTP/2, algo que normalmente no se nota.
 **¿Y lo que va por el VPS?** Va a la velocidad y latencia de tu VPS. Por eso
 `auto` es el modo recomendado: solo pasa por ahí lo que ahora mismo no
 funcionaría de ninguna otra forma.
+
+**¿Puede ir por el VPS algo que no está bloqueado?** Solo en dos casos: si lo
+pides en `via_vps`, o si durante un partido una conexión directa se queda
+colgada. En ese caso despeje lo trata como un bloqueo nuevo que aún no está en
+la lista y lo saca por el VPS, pero vuelve a probar esa IP en directo cada
+2 minutos y la suelta en cuanto responde. Un error normal del sitio (conexión
+rechazada) no cuenta, y fuera de los partidos esto no se activa.
 
 **¿Qué apps cubre?** Las que usan el proxy de Windows: Edge, Chrome, Firefox (por
 defecto) y la mayoría de programas. Juegos o apps que lo ignoran salen en directo.

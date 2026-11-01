@@ -6,6 +6,8 @@ import (
 	"log"
 	"net"
 	"net/netip"
+	"sort"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -19,8 +21,14 @@ const (
 	ModeAll  Mode = "all"  // todo el tráfico por el VPS
 )
 
-// learnTTL es cuánto recordamos una IP que falló en directo y sí funcionó por el VPS.
-const learnTTL = time.Hour
+// Una IP que falló en directo y sí funcionó por el VPS se recuerda learnTTL
+// como máximo; cada learnRecheck se vuelve a probar en directo y, si
+// responde, se olvida (un fallo puntual no debe mandar un sitio al VPS, donde
+// algunos servicios rechazan IPs de centros de datos).
+var (
+	learnTTL     = 30 * time.Minute
+	learnRecheck = 2 * time.Minute
+)
 
 type ContextDialer interface {
 	DialContext(ctx context.Context, network, addr string) (net.Conn, error)
@@ -33,6 +41,8 @@ type Router struct {
 	CDN           *IPSet
 	ViaVPS        *IPSet
 	Direct        *IPSet
+	ViaVPSDomains []string
+	DirectDomains []string
 	Fallback      bool
 	DirectTimeout time.Duration
 	Upstream      ContextDialer // nil = sin VPS
@@ -41,12 +51,25 @@ type Router struct {
 	Verbose       bool
 
 	learnedMu sync.Mutex
-	learned   map[netip.Addr]time.Time
+	learned   map[netip.Addr]*learnedIP
 
 	nDirect, nVPS, nFallback, nFail atomic.Int64
 
 	recentMu sync.Mutex
 	recent   []Route
+}
+
+type learnedIP struct {
+	exp  time.Time
+	host string
+	port string
+}
+
+// LearnedIP es lo que /status enseña de cada IP aprendida.
+type LearnedIP struct {
+	IP    string    `json:"ip"`
+	Host  string    `json:"host"`
+	Hasta time.Time `json:"hasta"`
 }
 
 type Route struct {
@@ -60,6 +83,22 @@ func (r *Router) DialContext(ctx context.Context, network, addr string) (net.Con
 	if err != nil {
 		return nil, err
 	}
+	if matchDomain(host, r.DirectDomains) {
+		ips, err := r.resolve(ctx, host)
+		if err != nil {
+			return nil, err
+		}
+		conn, _, err := r.dialDirect(ctx, ips, port)
+		if err == nil {
+			r.nDirect.Add(1)
+		}
+		return conn, err
+	}
+	if matchDomain(host, r.ViaVPSDomains) {
+		ips, _ := r.resolve(ctx, host)
+		return r.dialVPS(ctx, addr, ips, "manual")
+	}
+
 	ips, err := r.resolve(ctx, host)
 	if err != nil {
 		// Si el DNS local falla, que resuelva el VPS.
@@ -76,14 +115,14 @@ func (r *Router) DialContext(ctx context.Context, network, addr string) (net.Con
 			return conn, err
 		}
 		// VPS caído: último intento en directo, por si la lista no aplica a tu operador.
-		if c, derr := r.dialDirect(ctx, ips, port); derr == nil {
+		if c, _, derr := r.dialDirect(ctx, ips, port); derr == nil {
 			r.nDirect.Add(1)
 			return c, nil
 		}
 		return nil, err
 	}
 
-	conn, err := r.dialDirect(ctx, ips, port)
+	conn, timedOut, err := r.dialDirect(ctx, ips, port)
 	if err == nil {
 		r.nDirect.Add(1)
 		if r.Verbose {
@@ -91,7 +130,9 @@ func (r *Router) DialContext(ctx context.Context, network, addr string) (net.Con
 		}
 		return conn, nil
 	}
-	if !r.Fallback || r.Upstream == nil || ctx.Err() != nil || allLocal(ips) {
+	// El bloqueo de LaLiga descarta paquetes en silencio: solo un timeout lo
+	// parece. Un reset o "connection refused" es un fallo normal del sitio.
+	if !r.Fallback || r.Upstream == nil || ctx.Err() != nil || allLocal(ips) || !timedOut || !r.blocksActive() {
 		r.nFail.Add(1)
 		return nil, err
 	}
@@ -99,7 +140,7 @@ func (r *Router) DialContext(ctx context.Context, network, addr string) (net.Con
 	if verr != nil {
 		return nil, err
 	}
-	r.learn(ips)
+	r.learn(ips, host, port)
 	r.nFallback.Add(1)
 	return conn, nil
 }
@@ -156,7 +197,8 @@ func (r *Router) reasonVPS(ips []netip.Addr) string {
 	return ""
 }
 
-func (r *Router) dialDirect(ctx context.Context, ips []netip.Addr, port string) (net.Conn, error) {
+// dialDirect devuelve también si algún intento acabó en timeout.
+func (r *Router) dialDirect(ctx context.Context, ips []netip.Addr, port string) (_ net.Conn, timedOut bool, _ error) {
 	ctx, cancel := context.WithTimeout(ctx, r.DirectTimeout)
 	defer cancel()
 	deadline, _ := ctx.Deadline()
@@ -176,9 +218,10 @@ func (r *Router) dialDirect(ctx context.Context, ips []netip.Addr, port string) 
 		conn, err := d.DialContext(dctx, "tcp", net.JoinHostPort(ip.String(), port))
 		dcancel()
 		if err == nil {
-			return conn, nil
+			return conn, false, nil
 		}
 		lastErr = err
+		timedOut = timedOut || isTimeout(err)
 		if ctx.Err() != nil {
 			break
 		}
@@ -186,7 +229,20 @@ func (r *Router) dialDirect(ctx context.Context, ips []netip.Addr, port string) 
 	if lastErr == nil {
 		lastErr = errors.New("sin direcciones")
 	}
-	return nil, lastErr
+	return nil, timedOut, lastErr
+}
+
+func isTimeout(err error) bool {
+	var ne net.Error
+	return errors.Is(err, context.DeadlineExceeded) || (errors.As(err, &ne) && ne.Timeout())
+}
+
+// blocksActive dice si hay bloqueos en curso (o si no lo sabemos aún).
+func (r *Router) blocksActive() bool {
+	if r.Blocked == nil || r.Blocked.Set() == nil {
+		return true
+	}
+	return r.Blocked.Set().Len() > 0
 }
 
 // vpsAttemptTimeout es lo que esperamos por cada IP antes de probar la siguiente.
@@ -250,33 +306,95 @@ func (r *Router) dialVPSTargets(ctx context.Context, addr string, ips []netip.Ad
 	return nil, lastErr
 }
 
-func (r *Router) learn(ips []netip.Addr) {
+func (r *Router) learn(ips []netip.Addr, host, port string) {
 	r.learnedMu.Lock()
 	defer r.learnedMu.Unlock()
 	if r.learned == nil {
-		r.learned = make(map[netip.Addr]time.Time)
+		r.learned = make(map[netip.Addr]*learnedIP)
 	}
 	exp := time.Now().Add(learnTTL)
 	for _, ip := range ips {
-		r.learned[ip] = exp
+		r.learned[ip] = &learnedIP{exp: exp, host: host, port: port}
 	}
 }
 
 func (r *Router) isLearned(ip netip.Addr) bool {
 	r.learnedMu.Lock()
 	defer r.learnedMu.Unlock()
-	exp, ok := r.learned[ip]
-	if ok && time.Now().After(exp) {
+	l, ok := r.learned[ip]
+	if ok && time.Now().After(l.exp) {
 		delete(r.learned, ip)
 		return false
 	}
 	return ok
 }
 
-func (r *Router) learnedCount() int {
+func (r *Router) forget(ip netip.Addr) {
+	r.learnedMu.Lock()
+	delete(r.learned, ip)
+	r.learnedMu.Unlock()
+}
+
+func (r *Router) learnedList() []LearnedIP {
 	r.learnedMu.Lock()
 	defer r.learnedMu.Unlock()
-	return len(r.learned)
+	out := make([]LearnedIP, 0, len(r.learned))
+	for ip, l := range r.learned {
+		out = append(out, LearnedIP{IP: ip.String(), Host: l.host, Hasta: l.exp})
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Hasta.Before(out[j].Hasta) })
+	return out
+}
+
+// RecheckLearned vuelve a probar en directo las IPs aprendidas y olvida las
+// que responden.
+func (r *Router) RecheckLearned(ctx context.Context) {
+	t := time.NewTicker(learnRecheck)
+	defer t.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+			r.recheckOnce(ctx)
+		}
+	}
+}
+
+func (r *Router) recheckOnce(ctx context.Context) {
+	type probe struct {
+		ip   netip.Addr
+		host string
+		port string
+	}
+	var probes []probe
+	r.learnedMu.Lock()
+	for ip, l := range r.learned {
+		if time.Now().After(l.exp) {
+			delete(r.learned, ip)
+			continue
+		}
+		probes = append(probes, probe{ip, l.host, l.port})
+	}
+	r.learnedMu.Unlock()
+
+	var wg sync.WaitGroup
+	sem := make(chan struct{}, 8)
+	for _, p := range probes {
+		wg.Add(1)
+		sem <- struct{}{}
+		go func() {
+			defer func() { <-sem; wg.Done() }()
+			conn, _, err := r.dialDirect(ctx, []netip.Addr{p.ip}, p.port)
+			if err != nil {
+				return
+			}
+			conn.Close()
+			r.forget(p.ip)
+			log.Printf("directo  %s (%s) vuelve a responder; deja de ir por el VPS", p.ip, p.host)
+		}()
+	}
+	wg.Wait()
 }
 
 func (r *Router) recentRoutes() []Route {
@@ -292,4 +410,15 @@ func allLocal(ips []netip.Addr) bool {
 		}
 	}
 	return len(ips) > 0
+}
+
+// matchDomain dice si host es alguno de los dominios o un subdominio suyo.
+func matchDomain(host string, domains []string) bool {
+	host = strings.TrimSuffix(strings.ToLower(host), ".")
+	for _, d := range domains {
+		if host == d || strings.HasSuffix(host, "."+d) {
+			return true
+		}
+	}
+	return false
 }
