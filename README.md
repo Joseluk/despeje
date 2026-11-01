@@ -37,7 +37,7 @@ irm https://raw.githubusercontent.com/Joseluk/despeje/main/install.ps1 | iex
 Te preguntará el `usuario@ip` de tu VPS, tu operador y el modo. Después, solo:
 
 1. descarga despeje desde las [Releases](https://github.com/Joseluk/despeje/releases) y verifica su SHA-256,
-2. crea una clave SSH propia (`~/.ssh/despeje_ed25519`),
+2. crea una clave SSH propia (`%USERPROFILE%\.despeje\id_ed25519`; no toca tu `~/.ssh`),
 3. entra en tu VPS (te pedirá tu clave de SSH o de `sudo` si hace falta) y ejecuta
    [`setup-vps.sh`](setup-vps.sh), que crea el usuario `despeje` restringido,
 4. comprueba que todo funciona y lo deja arrancando al iniciar sesión.
@@ -60,7 +60,7 @@ Otras variables: `DESPEJE_SKIP_VPS=1` (si ya preparaste el VPS a mano),
 <summary>Preparar el VPS a mano</summary>
 
 Si prefieres no dar acceso de `sudo` al instalador, ejecuta en el VPS con la
-clave pública que te muestra el instalador (`~/.ssh/despeje_ed25519.pub`):
+clave pública que te muestra el instalador (`%USERPROFILE%\.despeje\id_ed25519.pub`):
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Joseluk/despeje/main/setup-vps.sh | sudo bash -s -- 'ssh-ed25519 AAAA... despeje@tupc'
@@ -93,6 +93,26 @@ No hay nada que hacer: navega como siempre. Para ver qué está pasando:
 `isp` elige la lista de tu operador: `any`, `movistar`, `vodafone`, `orange`,
 `digi`, `masmovil`. `via_vps` y `direct` aceptan IPs o rangos CIDR para forzar
 una ruta.
+
+## Si algo falla
+
+Abre un **PowerShell normal** (no como administrador) y lanza la comprobación,
+que prueba cada pieza por separado:
+
+```powershell
+& $env:USERPROFILE\.despeje\despeje.exe -check
+```
+
+| Mensaje | Qué pasa y cómo se arregla |
+|---------|----------------------------|
+| `Acceso denegado` al crear la clave | Una carpeta de tu perfil tiene permisos rotos. Restáuralos con el `icacls ... /reset /T` que te indica el error y repite la instalación. |
+| `... no está en known_hosts` | El instalador no pudo guardar la huella del VPS. Vuelve a ejecutarlo. |
+| `El VPS no deja abrir túneles a este usuario` | `sshd` tiene `AllowTcpForwarding no`, `DisableForwarding yes` o un `PermitOpen` restrictivo para `despeje`. Revisa `sshd -T -C user=despeje,host=x,addr=1.2.3.4`. |
+| `El VPS acepta el túnel pero no logra salir a internet` | El VPS no llega a la web: comprueba con `curl -4 https://www.cloudflare.com` desde el VPS, y que no esté también en España. |
+| `Tu conexión bloquea ...? no, responde en directo` | No es un error: ahora mismo esa IP no está bloqueada para ti. |
+
+Si el instalador se cortó en la comprobación, vuelve a ejecutarlo: con «Solo
+actualizar» no toca el VPS y termina de dejarlo en marcha.
 
 ## Desinstalar
 

@@ -13,7 +13,7 @@
     "host": "mi-vps.example.com",
     "port": 22,
     "user": "despeje",
-    "key": "~/.ssh/despeje_ed25519",
-    "known_hosts": "~/.ssh/known_hosts"
+    "key": "~/.despeje/id_ed25519",
+    "known_hosts": "~/.despeje/known_hosts"
   }
 }

@@ -64,14 +64,14 @@ func (r *Router) DialContext(ctx context.Context, network, addr string) (net.Con
 	if err != nil {
 		// Si el DNS local falla, que resuelva el VPS.
 		if r.Upstream != nil && ctx.Err() == nil {
-			return r.dialVPS(ctx, addr, "dns")
+			return r.dialVPS(ctx, addr, nil, "dns")
 		}
 		r.nFail.Add(1)
 		return nil, err
 	}
 
 	if reason := r.reasonVPS(ips); reason != "" {
-		conn, err := r.dialVPS(ctx, addr, reason)
+		conn, err := r.dialVPS(ctx, addr, ips, reason)
 		if err == nil || ctx.Err() != nil {
 			return conn, err
 		}
@@ -95,7 +95,7 @@ func (r *Router) DialContext(ctx context.Context, network, addr string) (net.Con
 		r.nFail.Add(1)
 		return nil, err
 	}
-	conn, verr := r.dialVPS(ctx, addr, "fallback")
+	conn, verr := r.dialVPS(ctx, addr, ips, "fallback")
 	if verr != nil {
 		return nil, err
 	}
@@ -189,11 +189,18 @@ func (r *Router) dialDirect(ctx context.Context, ips []netip.Addr, port string) 
 	return nil, lastErr
 }
 
-func (r *Router) dialVPS(ctx context.Context, addr, reason string) (net.Conn, error) {
+// vpsAttemptTimeout es lo que esperamos por cada IP antes de probar la siguiente.
+var vpsAttemptTimeout = 5 * time.Second
+
+// dialVPS abre la conexión desde el VPS. Le pasamos IPs ya resueltas aquí
+// (IPv4 primero) en vez del nombre: sshd resuelve cada nombre sin caché, lo
+// que añade ~0,4 s por conexión y depende de que el DNS del VPS no se atasque.
+// Si ninguna IP funciona, probamos con el nombre por si el VPS ve otras.
+func (r *Router) dialVPS(ctx context.Context, addr string, ips []netip.Addr, reason string) (net.Conn, error) {
 	if r.Upstream == nil {
 		return nil, errors.New("no hay VPS configurado")
 	}
-	conn, err := r.Upstream.DialContext(ctx, "tcp", addr)
+	conn, err := r.dialVPSTargets(ctx, addr, ips)
 	if err != nil {
 		r.nFail.Add(1)
 		log.Printf("VPS      %s (%s): error: %v", addr, reason, err)
@@ -208,6 +215,39 @@ func (r *Router) dialVPS(ctx context.Context, addr, reason string) (net.Conn, er
 	}
 	r.recentMu.Unlock()
 	return conn, nil
+}
+
+func (r *Router) dialVPSTargets(ctx context.Context, addr string, ips []netip.Addr) (net.Conn, error) {
+	host, port, _ := net.SplitHostPort(addr)
+	var targets []string
+	for _, v4 := range []bool{true, false} {
+		for _, ip := range ips {
+			if ip.Is4() == v4 {
+				targets = append(targets, net.JoinHostPort(ip.String(), port))
+			}
+		}
+	}
+	if _, err := netip.ParseAddr(host); err != nil {
+		targets = append(targets, addr)
+	}
+
+	var lastErr error
+	for i, t := range targets {
+		actx, cancel := ctx, context.CancelFunc(func() {})
+		if i < len(targets)-1 {
+			actx, cancel = context.WithTimeout(ctx, vpsAttemptTimeout)
+		}
+		conn, err := r.Upstream.DialContext(actx, "tcp", t)
+		cancel()
+		if err == nil {
+			return conn, nil
+		}
+		lastErr = err
+		if ctx.Err() != nil {
+			break
+		}
+	}
+	return nil, lastErr
 }
 
 func (r *Router) learn(ips []netip.Addr) {

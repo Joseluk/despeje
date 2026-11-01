@@ -24,7 +24,10 @@ $Raw  = "https://raw.githubusercontent.com/$Repo/main"
 $Dest = Join-Path $env:USERPROFILE '.despeje'
 $Cfg  = Join-Path $Dest 'config.json'
 $Exe  = Join-Path $Dest 'despeje.exe'
-$KeyRel = '~/.ssh/despeje_ed25519'
+# Clave y known_hosts propios: no dependemos del estado de ~/.ssh (permisos rotos,
+# ficheros de otras herramientas...). Con '~' ssh.exe no se lia con espacios.
+$KeyRel   = '~/.despeje/id_ed25519'
+$KnownRel = '~/.despeje/known_hosts'
 $Isps  = 'any', 'movistar', 'vodafone', 'orange', 'digi', 'masmovil'
 $Modes = 'auto', 'cdn', 'all'
 
@@ -38,6 +41,12 @@ function Ask($question, $default) {
 Write-Host ''
 Write-Host 'despeje: saca por tu VPS solo las IPs que LaLiga bloquea' -ForegroundColor Cyan
 Write-Host ''
+$principal = [Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()
+if ($principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+    Write-Host '!! Estas en un PowerShell de administrador. No hace falta y puede dejar ficheros con' -ForegroundColor Yellow
+    Write-Host '   permisos raros; si algo falla, repitelo desde un PowerShell normal.' -ForegroundColor Yellow
+    Write-Host ''
+}
 
 # --- 1. Configuracion ---------------------------------------------------------
 $existing = $null
@@ -127,7 +136,7 @@ if ($reconfigure) {
         Step "Preparando el VPS $adminUser@$vpsHost (puede pedirte la clave de SSH y la de sudo)"
         # Sin comillas dobles: Windows PowerShell 5.1 las rompe al pasar argumentos a ssh.exe.
         $remote = "S=sudo; [ `$(id -u) -eq 0 ] && S=; (curl -fsSL $Raw/setup-vps.sh || wget -qO- $Raw/setup-vps.sh) | `$S bash -s -- '$pub'"
-        & ssh.exe -t -o StrictHostKeyChecking=accept-new -p $port "$adminUser@$vpsHost" $remote
+        & ssh.exe -t -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=$KnownRel -p $port "$adminUser@$vpsHost" $remote
         if ($LASTEXITCODE -ne 0) {
             throw "No se pudo preparar el VPS. Hazlo a mano ejecutando alli:`n    $setupCmd`ny repite la instalacion con `$env:DESPEJE_SKIP_VPS='1'"
         }
@@ -135,7 +144,7 @@ if ($reconfigure) {
     # Guarda la huella del VPS en known_hosts si aun no estaba (despeje la verifica).
     # En PowerShell 5.1, 2>$null con 'Stop' convierte cualquier aviso de ssh en error.
     $ErrorActionPreference = 'Continue'
-    & ssh.exe -o StrictHostKeyChecking=accept-new -o BatchMode=yes -o ConnectTimeout=10 -i "$env:USERPROFILE\.ssh\despeje_ed25519" -p $port "despeje@$vpsHost" exit 2>$null | Out-Null
+    & ssh.exe -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=$KnownRel -o BatchMode=yes -o ConnectTimeout=10 -i "$env:USERPROFILE\.despeje\id_ed25519" -p $port "despeje@$vpsHost" exit 2>$null | Out-Null
     $ErrorActionPreference = 'Stop'
 
     $conf = [ordered]@{
@@ -149,7 +158,7 @@ if ($reconfigure) {
         via_vps        = @($existing.via_vps | Where-Object { $_ })
         direct         = @($existing.direct | Where-Object { $_ })
         log_file       = '~/.despeje/despeje.log'
-        vps            = [ordered]@{ host = $vpsHost; port = $port; user = 'despeje'; key = $KeyRel; known_hosts = '~/.ssh/known_hosts' }
+        vps            = [ordered]@{ host = $vpsHost; port = $port; user = 'despeje'; key = $KeyRel; known_hosts = $KnownRel }
     }
     [IO.File]::WriteAllText($Cfg, ($conf | ConvertTo-Json -Depth 4))
 }

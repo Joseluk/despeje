@@ -5,9 +5,11 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
+	"io/fs"
 	"log"
 	"net"
 	"net/http"
@@ -16,6 +18,8 @@ import (
 	"path/filepath"
 	"syscall"
 	"time"
+
+	"golang.org/x/crypto/ssh"
 )
 
 // version la fija el build de release con -ldflags "-X main.version=...".
@@ -35,7 +39,12 @@ func main() {
 		return
 	}
 	if *keygen != "" {
-		line, err := ensureKey(expandPath(*keygen))
+		path := expandPath(*keygen)
+		line, err := ensureKey(path)
+		if errors.Is(err, fs.ErrPermission) {
+			dir := filepath.Dir(path)
+			fatal("%v\nWindows deniega el acceso a %s. Si es tu carpeta, restaura sus permisos con:\n  icacls \"%s\" /reset /T", err, dir, dir)
+		}
 		if err != nil {
 			fatal("%v", err)
 		}
@@ -174,12 +183,29 @@ func runCheck(ctx context.Context, r *Router, bl *Blocklist, up *SSHUpstream) in
 	fmt.Println("OK")
 
 	fmt.Printf("Salida por el VPS (www.cloudflare.com:443)... ")
-	if c, err := up.DialContext(ctx, "tcp", "www.cloudflare.com:443"); err != nil {
-		fmt.Println("ERROR:", err, "\n  ¿El VPS permite port forwarding? (AllowTcpForwarding / permitopen)")
+	var verr error
+	for attempt := 0; attempt < 3; attempt++ {
+		t0 := time.Now()
+		ips, _ := r.resolve(ctx, "www.cloudflare.com")
+		c, err := r.dialVPSTargets(ctx, "www.cloudflare.com:443", ips)
+		if verr = err; err == nil {
+			c.Close()
+			fmt.Printf("OK (%v)\n", time.Since(t0).Round(time.Millisecond))
+			break
+		}
+		if ctx.Err() != nil {
+			break
+		}
+	}
+	if verr != nil {
 		status = 1
-	} else {
-		c.Close()
-		fmt.Println("OK")
+		fmt.Println("ERROR:", verr)
+		var oce *ssh.OpenChannelError
+		if errors.As(verr, &oce) && oce.Reason == ssh.Prohibited {
+			fmt.Println("  El VPS no deja abrir túneles a este usuario (AllowTcpForwarding / PermitOpen / DisableForwarding).")
+		} else {
+			fmt.Println("  El VPS acepta el túnel pero no logra salir a internet: revisa su red o un cortafuegos de salida.")
+		}
 	}
 
 	if ip, ok := bl.Set().First(); ok {

@@ -16,6 +16,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -50,6 +51,15 @@ type fakeVPS struct {
 	keyFile    string
 	forwards   atomic.Int64
 	redirect   map[string]string // IP pública simulada -> servidor de pruebas
+
+	mu       sync.Mutex
+	requests []string // destinos pedidos al VPS, en orden
+}
+
+func (v *fakeVPS) requested() []string {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	return append([]string(nil), v.requests...)
 }
 
 func startFakeVPS(t *testing.T) *fakeVPS {
@@ -112,6 +122,9 @@ func startFakeVPS(t *testing.T) *fakeVPS {
 						continue // nunca responde: simula un destino que no contesta
 					}
 					target := net.JoinHostPort(p.Host, fmt.Sprint(p.Port))
+					v.mu.Lock()
+					v.requests = append(v.requests, target)
+					v.mu.Unlock()
 					if to, ok := v.redirect[target]; ok {
 						target = to
 					}
@@ -347,5 +360,35 @@ func TestVPSChannelTimeoutKeepsSession(t *testing.T) {
 	}
 	if vps.forwards.Load() != 1 {
 		t.Fatalf("forwards=%d", vps.forwards.Load())
+	}
+}
+
+func TestVPSDialPrefersIPv4ThenName(t *testing.T) {
+	ts := newTarget(t, false)
+	r, vps, _ := setup(t, nil)
+	vps.redirect["104.18.50.34:80"] = ts.Listener.Addr().String()
+	vps.redirect["198.51.100.7:80"] = "127.0.0.1:1" // rechaza: IP inalcanzable desde el VPS
+	vps.redirect["gol.test:80"] = ts.Listener.Addr().String()
+	ctx := context.Background()
+
+	// IPv4 antes que IPv6, y como IP literal (no el nombre).
+	ips := []netip.Addr{netip.MustParseAddr("2001:db8::1"), netip.MustParseAddr("104.18.50.34")}
+	conn, err := r.dialVPS(ctx, "gol.test:80", ips, "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	conn.Close()
+	if got := vps.requested(); len(got) != 1 || got[0] != "104.18.50.34:80" {
+		t.Fatalf("peticiones al VPS: %v", got)
+	}
+
+	// Si ninguna IP funciona, el VPS lo intenta con el nombre.
+	conn, err = r.dialVPS(ctx, "gol.test:80", []netip.Addr{netip.MustParseAddr("198.51.100.7")}, "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	conn.Close()
+	if got := vps.requested(); len(got) != 3 || got[1] != "198.51.100.7:80" || got[2] != "gol.test:80" {
+		t.Fatalf("peticiones al VPS: %v", got)
 	}
 }

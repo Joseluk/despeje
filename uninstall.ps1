@@ -22,5 +22,5 @@ Remove-Item -Recurse -Force $Dest -ErrorAction SilentlyContinue
 Write-Host '==> despeje desinstalado de este equipo.' -ForegroundColor Green
 Write-Host '    Para quitar tambien el usuario del VPS, ejecuta alli:'
 Write-Host "    curl -fsSL $Raw/setup-vps.sh | sudo bash -s -- --remove"
-Write-Host "    La clave SSH sigue en $env:USERPROFILE\.ssh\despeje_ed25519 por si reinstalas."
+Write-Host '    (La clave SSH de despeje se ha borrado con el programa; al reinstalar se crea otra.)'
 }
