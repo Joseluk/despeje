@@ -1,0 +1,19 @@
+{
+  "listen": "127.0.0.1:9119",
+  "mode": "auto",
+  "isp": "any",
+  "refresh": "2m",
+  "direct_timeout": "4s",
+  "fallback": true,
+  "system_proxy": true,
+  "via_vps": [],
+  "direct": [],
+  "log_file": "~/.despeje/despeje.log",
+  "vps": {
+    "host": "mi-vps.example.com",
+    "port": 22,
+    "user": "despeje",
+    "key": "~/.ssh/despeje_ed25519",
+    "known_hosts": "~/.ssh/known_hosts"
+  }
+}

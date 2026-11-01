@@ -1,0 +1,30 @@
+name: release
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: go test ./...
+      - name: Build
+        run: |
+          mkdir dist
+          for arch in amd64 arm64; do
+            flags="-s -w -X main.version=${GITHUB_REF_NAME}"
+            GOOS=windows GOARCH=$arch CGO_ENABLED=0 go build -trimpath -ldflags "$flags" -o dist/despeje-windows-$arch.exe .
+            GOOS=windows GOARCH=$arch CGO_ENABLED=0 go build -trimpath -ldflags "$flags -H=windowsgui" -o dist/despejew-windows-$arch.exe .
+          done
+          cd dist && sha256sum * > SHA256SUMS && cat SHA256SUMS
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" dist/* --title "$GITHUB_REF_NAME" --generate-notes
