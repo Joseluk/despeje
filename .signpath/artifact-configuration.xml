@@ -1,12 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
   Configuración de artefacto para SignPath (cópiala en el proyecto de SignPath).
-  El artefacto es el ZIP que sube el workflow de release con los cuatro .exe
-  en la raíz; se firman todos con Authenticode.
+  El artefacto es el ZIP que sube el workflow de release con los cuatro .exe en
+  la raíz. Se firman todos con Authenticode y solo si sus metadatos son los de
+  despeje y la versión de este build (parámetro "version", p.ej. 0.1.4.0, que
+  pasa el workflow), como exige SignPath Foundation.
 -->
 <artifact-configuration xmlns="http://signpath.io/artifact-configuration/v1">
+  <parameters>
+    <parameter name="version" />
+  </parameters>
   <zip-file>
-    <pe-file-set>
+    <pe-file-set product-name="despeje" product-version="${version}" file-version="${version}" original-filename="despeje.exe">
       <include path="despeje-windows-*.exe" min-matches="2" max-matches="2" />
       <include path="despejew-windows-*.exe" min-matches="2" max-matches="2" />
       <for-each>

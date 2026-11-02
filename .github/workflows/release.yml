@@ -71,6 +71,9 @@ jobs:
           signing-policy-slug: ${{ vars.SIGNPATH_POLICY_SLUG || 'release-signing' }}
           artifact-configuration-slug: ${{ vars.SIGNPATH_ARTIFACT_CONFIGURATION_SLUG || '' }}
           github-artifact-id: ${{ steps.unsigned.outputs.artifact-id }}
+          # La configuración de artefacto exige que los .exe lleven esta versión.
+          parameters: |
+            version: "${{ env.WINVER }}"
           # La política de release se aprueba a mano en SignPath: le damos tiempo.
           wait-for-completion-timeout-in-seconds: 7200
           output-artifact-directory: dist-signed

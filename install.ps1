@@ -10,6 +10,7 @@
 #   $env:DESPEJE_VPS  = 'ubuntu@203.0.113.10'   # usuario con sudo @ host[:puerto]
 #   $env:DESPEJE_ISP  = 'movistar'              # any|movistar|vodafone|orange|digi|masmovil
 #   $env:DESPEJE_MODE = 'auto'                  # auto|cdn|all
+#   $env:DESPEJE_YES  = '1'                     # no pedir confirmacion de los cambios
 # Otras: DESPEJE_SKIP_VPS=1 (el VPS ya esta preparado con setup-vps.sh),
 #        DESPEJE_VERSION=v1.2.3, DESPEJE_LOCAL_DIST=<carpeta con despeje.exe y despejew.exe>.
 & {
@@ -80,6 +81,19 @@ if ($reconfigure) {
     }
     $mode = $mode.ToLower()
     if ($Modes -notcontains $mode) { throw "Modo desconocido: $mode" }
+
+    Write-Host ''
+    Write-Host 'Esto es lo que se va a cambiar:' -ForegroundColor Cyan
+    Write-Host "  - En tu VPS ($vpsHost): se crea el usuario 'despeje', sin shell, que solo puede abrir tuneles SSH."
+    Write-Host "  - En este equipo: programa, clave SSH y configuracion en $Dest"
+    Write-Host '  - Proxy de Windows: se configura el script http://127.0.0.1:9119/proxy.pac (si despeje no'
+    Write-Host '    esta en marcha, los navegadores salen en directo como siempre).'
+    Write-Host "  - Una tarea programada 'despeje' que lo arranca al iniciar sesion."
+    Write-Host "  Todo se deshace con: irm $Raw/uninstall.ps1 | iex"
+    if ($env:DESPEJE_YES -ne '1') {
+        $a = Ask 'Continuar? (S/n)' 'S'
+        if ($a -match '^[nN]') { Write-Host 'Cancelado; no se ha cambiado nada.'; return }
+    }
 }
 
 # --- 2. Programa ----------------------------------------------------------------

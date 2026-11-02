@@ -50,7 +50,7 @@ Para **actualizar**, vuelve a ejecutar el mismo comando.
 <summary>Instalar sin preguntas</summary>
 
 ```powershell
-$env:DESPEJE_VPS='ubuntu@203.0.113.10'; $env:DESPEJE_ISP='movistar'; $env:DESPEJE_MODE='auto'
+$env:DESPEJE_VPS='ubuntu@203.0.113.10'; $env:DESPEJE_ISP='movistar'; $env:DESPEJE_MODE='auto'; $env:DESPEJE_YES='1'
 irm https://raw.githubusercontent.com/Joseluk/despeje/main/install.ps1 | iex
 ```
 
@@ -203,10 +203,12 @@ $env:DESPEJE_LOCAL_DIST="$PWD\dist"; .\install.ps1   # instalar tu build local
 
 Las releases se publican solas con GitHub Actions al subir una etiqueta `v*`.
 
-## Política de firma de código
+## Code signing policy
 
-Los binarios de Windows se firman con Authenticode en GitHub Actions, a partir
-de este repositorio, sin pasos manuales en ningún equipo.
+*Política de firma de código.* Los binarios de Windows se firman con
+Authenticode en GitHub Actions a partir de este repositorio, sin pasos
+manuales en ningún equipo. **Estado:** solicitado a SignPath Foundation; hasta
+que lo aprueben, las releases se publican sin firmar.
 
 Free code signing provided by [SignPath.io](https://about.signpath.io/),
 certificate by [SignPath Foundation](https://signpath.org/).
@@ -219,11 +221,14 @@ certificate by [SignPath Foundation](https://signpath.org/).
 Cada release firmada la aprueba a mano un aprobador en SignPath. El instalador
 verifica la firma y no instala un binario con la firma rota.
 
-**Privacidad.** despeje no envía información a ningún sistema salvo los que
-necesita para funcionar y que tú configuras o se indican aquí: descarga la
-lista pública de IPs bloqueadas de [hayahora.futbol](https://hayahora.futbol)
-y abre túneles SSH a **tu** VPS para las conexiones que deben salir por él. No
-tiene telemetría ni contacta con ningún servidor del proyecto.
+**Privacy policy.** This program will not transfer any information to other
+networked systems unless specifically requested by the user or the person
+installing or operating it. En concreto: abre túneles SSH a **tu** VPS (el que
+indicas al instalar) solo para las conexiones que deben salir por él, y
+descarga la lista pública de IPs bloqueadas de
+[hayahora.futbol](https://hayahora.futbol), un servicio de terceros que recibe
+esa petición como cualquier visita (tu IP y la versión de despeje). No tiene
+telemetría ni contacta con ningún servidor del proyecto.
 
 <details>
 <summary>Activar la firma (mantenedores)</summary>
