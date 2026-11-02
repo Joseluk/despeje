@@ -110,6 +110,14 @@ if ($env:DESPEJE_LOCAL_DIST) {
             Invoke-WebRequest -UseBasicParsing "$base/$file" -OutFile "$tmp\$file"
             $got = (Get-FileHash "$tmp\$file" -Algorithm SHA256).Hash.ToLower()
             if ($got -ne $sums[$file]) { throw "El checksum de $file no coincide; descarga corrupta o manipulada" }
+            # Las releases firmadas (SignPath) deben tener una firma valida; las antiguas no llevan.
+            $sig = Get-AuthenticodeSignature "$tmp\$file"
+            if ($sig.Status -eq 'Valid') {
+                $signer = $sig.SignerCertificate.GetNameInfo([Security.Cryptography.X509Certificates.X509NameType]::SimpleName, $false)
+                if ($name -eq 'despeje') { Step "Firma digital valida: $signer" }
+            } elseif ($sig.Status -ne 'NotSigned') {
+                throw "La firma digital de $file no es valida ($($sig.Status)); no lo instales"
+            }
             Copy-Item "$tmp\$file" (Join-Path $Dest "$name.exe") -Force
         }
     } finally {

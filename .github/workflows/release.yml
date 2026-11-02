@@ -2,27 +2,41 @@ name: release
 on:
   push:
     tags: ['v*']
+  # Ejecución manual: compila (y firma, si SignPath está configurado) sin
+  # publicar release; los binarios quedan como artefacto del run para revisarlos.
+  workflow_dispatch:
 
 permissions:
   contents: write
+  actions: read # SignPath descarga el artefacto sin firmar con el GITHUB_TOKEN
 
 jobs:
   release:
     runs-on: ubuntu-latest
+    env:
+      # La firma se activa al definir en el repo la variable SIGNPATH_ORGANIZATION_ID
+      # y el secreto SIGNPATH_API_TOKEN (ver "Firma de código" en el README).
+      SIGN: ${{ vars.SIGNPATH_ORGANIZATION_ID != '' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
       - run: go test ./...
+      - name: Version
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then v="$GITHUB_REF_NAME"; else v="v0.0.0-dev.${GITHUB_SHA::7}"; fi
+          n="${v#v}"; n="${n%%-*}.0"
+          echo "VERSION=$v" >> "$GITHUB_ENV"
+          echo "WINVER=$n" >> "$GITHUB_ENV"
+          echo "versión $v ($n)"
       # Metadatos de Windows (descripción, versión, icono, manifiesto asInvoker).
       # Un .exe anónimo y sin símbolos pesa en contra en la heurística de Defender.
       - name: Windows resources
         run: |
-          v="${GITHUB_REF_NAME#v}"; v="${v%%-*}.0"
           go run github.com/tc-hib/go-winres@v0.3.3 simply \
             --arch amd64,arm64 --manifest cli --icon assets/icon.png \
-            --product-name despeje --product-version "$v" --file-version "$v" \
+            --product-name despeje --product-version "$WINVER" --file-version "$WINVER" \
             --file-description "despeje - saca por tu VPS las IPs bloqueadas por LaLiga" \
             --original-filename despeje.exe \
             --copyright "Copyright (c) 2026 Jose Garcia - MIT - github.com/Joseluk/despeje"
@@ -31,12 +45,54 @@ jobs:
         run: |
           mkdir dist
           for arch in amd64 arm64; do
-            flags="-X main.version=${GITHUB_REF_NAME}"
+            flags="-X main.version=${VERSION}"
             GOOS=windows GOARCH=$arch CGO_ENABLED=0 go build -trimpath -ldflags "$flags" -o dist/despeje-windows-$arch.exe .
             GOOS=windows GOARCH=$arch CGO_ENABLED=0 go build -trimpath -ldflags "$flags -H=windowsgui" -o dist/despejew-windows-$arch.exe .
           done
-          cd dist && sha256sum * > SHA256SUMS && cat SHA256SUMS
+          ls -la dist
+
+      # --- Firma (SignPath) -----------------------------------------------------
+      - name: Upload unsigned binaries
+        id: unsigned
+        if: env.SIGN == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: despeje-unsigned
+          path: dist/*.exe
+          if-no-files-found: error
+      - name: Sign with SignPath
+        if: env.SIGN == 'true'
+        # Fijada a commit (v2): es la cadena de firma y no queremos que un tag movido la cambie.
+        uses: signpath/github-action-submit-signing-request@c92b958760219087e01f8d67a1669ed57afe2627
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG || 'despeje' }}
+          signing-policy-slug: ${{ vars.SIGNPATH_POLICY_SLUG || 'release-signing' }}
+          artifact-configuration-slug: ${{ vars.SIGNPATH_ARTIFACT_CONFIGURATION_SLUG || '' }}
+          github-artifact-id: ${{ steps.unsigned.outputs.artifact-id }}
+          # La política de release se aprueba a mano en SignPath: le damos tiempo.
+          wait-for-completion-timeout-in-seconds: 7200
+          output-artifact-directory: dist-signed
+      - name: Use signed binaries
+        if: env.SIGN == 'true'
+        run: |
+          for f in dist/*.exe; do
+            test -f "dist-signed/$(basename "$f")" || { echo "falta la versión firmada de $f"; exit 1; }
+          done
+          cp -f dist-signed/*.exe dist/
+          ls -la dist
+
+      - name: Checksums
+        run: cd dist && sha256sum * > SHA256SUMS && cat SHA256SUMS
       - name: Publish
+        if: startsWith(github.ref, 'refs/tags/v')
         env:
           GH_TOKEN: ${{ github.token }}
         run: gh release create "$GITHUB_REF_NAME" dist/* --title "$GITHUB_REF_NAME" --generate-notes
+      - name: Keep build (manual runs)
+        if: "!startsWith(github.ref, 'refs/tags/v')"
+        uses: actions/upload-artifact@v4
+        with:
+          name: despeje-build
+          path: dist/

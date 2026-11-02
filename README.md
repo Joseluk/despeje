@@ -203,6 +203,49 @@ $env:DESPEJE_LOCAL_DIST="$PWD\dist"; .\install.ps1   # instalar tu build local
 
 Las releases se publican solas con GitHub Actions al subir una etiqueta `v*`.
 
+## Política de firma de código
+
+Los binarios de Windows se firman con Authenticode en GitHub Actions, a partir
+de este repositorio, sin pasos manuales en ningún equipo.
+
+Free code signing provided by [SignPath.io](https://about.signpath.io/),
+certificate by [SignPath Foundation](https://signpath.org/).
+
+| Rol | Personas |
+|-----|----------|
+| Autores y revisores (*committers and reviewers*) | [Joseluk](https://github.com/Joseluk) |
+| Aprobadores (*approvers*) | [Joseluk](https://github.com/Joseluk) |
+
+Cada release firmada la aprueba a mano un aprobador en SignPath. El instalador
+verifica la firma y no instala un binario con la firma rota.
+
+**Privacidad.** despeje no envía información a ningún sistema salvo los que
+necesita para funcionar y que tú configuras o se indican aquí: descarga la
+lista pública de IPs bloqueadas de [hayahora.futbol](https://hayahora.futbol)
+y abre túneles SSH a **tu** VPS para las conexiones que deben salir por él. No
+tiene telemetría ni contacta con ningún servidor del proyecto.
+
+<details>
+<summary>Activar la firma (mantenedores)</summary>
+
+1. Proyecto aprobado en [SignPath Foundation](https://signpath.org/apply), con
+   el repositorio conectado como *trusted build system* (GitHub.com).
+2. En SignPath: proyecto `despeje`, política de firma `release-signing` y como
+   configuración de artefacto el contenido de
+   [`.signpath/artifact-configuration.xml`](.signpath/artifact-configuration.xml).
+3. En GitHub → Settings → Secrets and variables → Actions:
+   - secreto `SIGNPATH_API_TOKEN` (token de API de un usuario CI de SignPath con
+     permiso de *submitter* en el proyecto),
+   - variable `SIGNPATH_ORGANIZATION_ID`,
+   - opcionales si los slugs son otros: `SIGNPATH_PROJECT_SLUG`,
+     `SIGNPATH_POLICY_SLUG`, `SIGNPATH_ARTIFACT_CONFIGURATION_SLUG`.
+4. Prueba sin publicar nada: Actions → release → *Run workflow*. Al aprobar la
+   petición en SignPath, el run deja los `.exe` firmados como artefacto.
+
+Sin la variable `SIGNPATH_ORGANIZATION_ID` el workflow publica sin firmar,
+como hasta ahora.
+</details>
+
 ## Licencia
 
 [MIT](LICENSE)
