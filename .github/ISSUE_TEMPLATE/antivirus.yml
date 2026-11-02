@@ -1,0 +1,39 @@
+name: 🛡️ El antivirus lo bloquea
+description: Windows Defender u otro antivirus detecta despeje como amenaza.
+labels: [antivirus]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Suele ser un falso positivo de la detección por comportamiento (`!ml`): mira [por qué pasa y qué hacer](https://github.com/Joseluk/despeje#por-qué-windows-defender-dice-que-es-un-troyano).
+        Avisar aquí nos ayuda a pedir a los antivirus que lo corrijan.
+  - type: input
+    id: detection
+    attributes:
+      label: Nombre de la detección
+      placeholder: Trojan:Win32/Bearfoos.A!ml
+    validations:
+      required: true
+  - type: input
+    id: av
+    attributes:
+      label: Antivirus
+      placeholder: Windows Defender
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Versión de despeje
+      placeholder: v0.1.3
+  - type: input
+    id: hash
+    attributes:
+      label: SHA-256 del fichero detectado
+      description: "`Get-FileHash $env:USERPROFILE\.despeje\despejew.exe` (debe coincidir con SHA256SUMS de la release)."
+  - type: checkboxes
+    id: reported
+    attributes:
+      label: ¿Lo has comunicado al fabricante?
+      options:
+        - label: Sí, lo he enviado como falso positivo (p. ej. en microsoft.com/wdsi/filesubmission)

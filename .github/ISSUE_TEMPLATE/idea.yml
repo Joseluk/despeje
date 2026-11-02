@@ -1,0 +1,11 @@
+name: 💡 Idea o mejora
+description: Propón algo nuevo para despeje.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: idea
+    attributes:
+      label: Qué te gustaría
+      description: Qué problema resolvería y cómo lo imaginas.
+    validations:
+      required: true

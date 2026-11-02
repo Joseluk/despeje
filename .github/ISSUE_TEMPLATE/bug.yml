@@ -1,0 +1,45 @@
+name: 🐛 Algo no funciona
+description: despeje no se instala, no arranca o una web no carga como debería.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ¡Gracias por avisar! Antes de nada, mira la sección [Si algo falla](https://github.com/Joseluk/despeje#si-algo-falla) del README: muchos problemas tienen solución ahí.
+        **No pegues contraseñas, claves privadas ni la IP de tu VPS si no quieres que sean públicas.**
+  - type: textarea
+    id: what
+    attributes:
+      label: Qué ha pasado
+      description: Qué hiciste, qué esperabas y qué pasó en cambio.
+    validations:
+      required: true
+  - type: textarea
+    id: check
+    attributes:
+      label: Salida de la comprobación
+      description: "Ejecuta `& $env:USERPROFILE\.despeje\despeje.exe -check` en un PowerShell normal y pega aquí la salida (puedes tapar la IP del VPS)."
+      render: text
+  - type: input
+    id: version
+    attributes:
+      label: Versión
+      description: "`& $env:USERPROFILE\.despeje\despeje.exe -version`"
+      placeholder: despeje v0.1.3
+  - type: dropdown
+    id: isp
+    attributes:
+      label: Operador
+      options: [Movistar, Vodafone, Orange, Digi, MásMóvil, Otro]
+  - type: input
+    id: vps
+    attributes:
+      label: VPS
+      description: Proveedor, país y distribución (sin la IP).
+      placeholder: Hetzner, Alemania, Ubuntu 24.04
+  - type: textarea
+    id: log
+    attributes:
+      label: Log
+      description: "Las últimas líneas de `%USERPROFILE%\.despeje\despeje.log`, si hay algo raro."
+      render: text

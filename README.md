@@ -1,53 +1,132 @@
-# despeje
+<p align="center">
+  <img src="assets/logo.svg" width="150" alt="Logo de despeje: un balón que salta por encima de un muro">
+</p>
 
-**Si los bloqueos de LaLiga te tiran webs normales durante los partidos, despeje
-las saca por tu propio VPS. Solo esas: el resto de tu tráfico sigue en directo.**
+<h1 align="center">despeje</h1>
 
-Durante los partidos, los operadores españoles bloquean por orden judicial IPs
-compartidas de Cloudflare, Vercel, GitHub, Fastly… y con ellas miles de webs
-que no tienen nada que ver con el fútbol. despeje lee en tiempo real la lista de
-IPs bloqueadas de [hayahora.futbol](https://hayahora.futbol/#sobre-los-bloqueos)
-y manda **solo esas conexiones** por un túnel SSH a tu VPS.
+<p align="center">
+  <b>Que el fútbol no te tumbe internet.</b><br>
+  Cuando LaLiga hace bloquear media internet durante los partidos, despeje saca por
+  <b>tu propio servidor</b> solo las webs afectadas. Todo lo demás sigue en directo.
+</p>
 
+<p align="center">
+  <a href="https://github.com/Joseluk/despeje/releases/latest"><img alt="Última versión" src="https://img.shields.io/github/v/release/Joseluk/despeje?style=flat-square&color=1f8a4c&label=versi%C3%B3n"></a>
+  <a href="https://github.com/Joseluk/despeje/releases"><img alt="Descargas" src="https://img.shields.io/github/downloads/Joseluk/despeje/total?style=flat-square&color=1f8a4c&label=descargas"></a>
+  <a href="https://github.com/Joseluk/despeje/actions/workflows/ci.yml"><img alt="Tests" src="https://img.shields.io/github/actions/workflow/status/Joseluk/despeje/ci.yml?branch=main&style=flat-square&label=tests"></a>
+  <img alt="Windows 10 y 11" src="https://img.shields.io/badge/Windows-10%20%7C%2011-0078D4?style=flat-square">
+  <a href="LICENSE"><img alt="Licencia MIT" src="https://img.shields.io/github/license/Joseluk/despeje?style=flat-square&label=licencia"></a>
+</p>
+
+<p align="center">
+  <a href="#instalación">Instalación</a> ·
+  <a href="#cómo-funciona">Cómo funciona</a> ·
+  <a href="#y-por-qué-no-una-vpn">¿Y una VPN?</a> ·
+  <a href="#si-algo-falla">Si algo falla</a> ·
+  <a href="#preguntas">Preguntas</a> ·
+  <a href="README.en.md">English</a>
+</p>
+
+---
+
+## El problema
+
+Cada partido de LaLiga, los operadores españoles bloquean por orden judicial
+**IPs compartidas** de Cloudflare, Vercel, GitHub, Fastly y otras redes. Detrás
+de cada una de esas IPs hay miles de webs que no tienen nada que ver con el
+fútbol: tiendas, bancos, documentación, herramientas de trabajo, blogs… y todas
+caen a la vez, sin aviso, hasta que termina el partido.
+
+[hayahora.futbol](https://hayahora.futbol/#sobre-los-bloqueos) lo vigila en
+tiempo real y publica qué IPs están bloqueadas en cada momento. despeje usa
+esa lista para que tú no lo notes.
+
+## La solución
+
+<table>
+  <tr>
+    <td width="33%" valign="top">
+      <h3>🎯 Solo lo bloqueado</h3>
+      Lee la lista de hayahora.futbol cada 2 minutos y desvía
+      <b>únicamente</b> esas conexiones. Netflix, tu banco o tu videollamada
+      siguen yendo en directo, a toda velocidad.
+    </td>
+    <td width="33%" valign="top">
+      <h3>🏠 Por tu servidor</h3>
+      Sale por <b>tu</b> VPS a través de un túnel SSH. Sin VPN de terceros,
+      sin cuentas, sin suscripciones, y sin instalar nada en el servidor: basta
+      con el <code>sshd</code> que ya tiene.
+    </td>
+    <td width="33%" valign="top">
+      <h3>⚡ Un comando</h3>
+      Se instala pegando una línea en PowerShell, sin permisos de
+      administrador. Arranca solo al iniciar sesión y se desinstala igual de
+      fácil.
+    </td>
+  </tr>
+  <tr>
+    <td width="33%" valign="top">
+      <h3>🧠 Aprende solo</h3>
+      Si en pleno partido una web se queda colgada y aún no está en la lista,
+      la saca por el VPS y la vuelve a probar en directo cada 2 minutos.
+    </td>
+    <td width="33%" valign="top">
+      <h3>🛟 Sin riesgo</h3>
+      Si despeje se para, Windows vuelve a salir en directo como siempre. Nunca
+      te deja sin internet.
+    </td>
+    <td width="33%" valign="top">
+      <h3>🔒 Seguro y abierto</h3>
+      El usuario del VPS solo puede abrir túneles, la identidad del servidor se
+      verifica y los binarios se compilan en GitHub Actions con su SHA-256.
+    </td>
+  </tr>
+</table>
+
+## Cómo funciona
+
+```mermaid
+flowchart LR
+    A["🌐 Tu navegador"] --> B{"despeje<br/>¿IP bloqueada<br/>ahora mismo?"}
+    B -- "no (casi siempre)" --> C["Directo,<br/>como siempre"]
+    B -- "sí" --> D["🔐 Túnel SSH"] --> E["🖥️ Tu VPS"] --> F["La web"]
+    H[("hayahora.futbol<br/>lista de IPs<br/>bloqueadas")] -. "cada 2 min" .-> B
+    classDef ok fill:#e8f6ee,stroke:#1f8a4c,color:#0b3d22
+    classDef vps fill:#fdecea,stroke:#c94a3d,color:#5c1a14
+    class C ok
+    class D,E,F vps
 ```
-navegador ──► despeje (127.0.0.1:9119)
-                 │  ¿la IP está bloqueada ahora mismo, o falla en directo?
-                 ├── no ─► directo, como siempre
-                 └── sí ─► túnel SSH ─► tu VPS ─► la web
-```
 
-- **Nada que instalar en el VPS**: solo hace falta el `sshd` que ya tiene.
-- **Solo lo bloqueado**: lista actualizada cada 2 minutos. Si durante un
-  partido una conexión directa se queda colgada (así es como se ve un bloqueo),
-  se reintenta por el VPS; esa IP se vuelve a probar en directo cada 2 minutos
-  y deja de ir por el VPS en cuanto responde.
-- **No te deja sin internet**: si despeje se cae, Windows vuelve a salir en directo.
-- **Seguro**: el usuario del VPS solo puede abrir túneles (sin shell) y la huella
-  del servidor se verifica con `known_hosts`.
+1. Windows usa despeje como proxy (un script PAC en `127.0.0.1:9119`).
+2. Para cada conexión, despeje resuelve la IP y mira si está en la lista de
+   bloqueos de tu operador.
+3. Si lo está, la abre desde tu VPS por SSH; si no, sale en directo.
 
 ## Instalación
 
-Necesitas un VPS Linux fuera de España (o en una red sin bloqueos) al que
-entres por SSH con un usuario con `sudo`, y Windows 10/11.
+**Necesitas:** Windows 10 u 11 y un VPS Linux fuera de España (o en una red sin
+bloqueos) al que entres por SSH con un usuario con `sudo`. Cualquier VPS barato
+sirve.
 
-Abre **PowerShell** (no hace falta administrador) y pega:
+Abre **PowerShell** (no hace falta como administrador) y pega:
 
 ```powershell
 irm https://raw.githubusercontent.com/Joseluk/despeje/main/install.ps1 | iex
 ```
 
-Te preguntará el `usuario@ip` de tu VPS, tu operador y el modo. Después, solo:
+Te preguntará el `usuario@ip` de tu VPS, tu operador y el modo, te enseñará lo
+que va a cambiar y, si le dices que sí:
 
-1. descarga despeje desde las [Releases](https://github.com/Joseluk/despeje/releases) y verifica su SHA-256,
-2. crea una clave SSH propia (`%USERPROFILE%\.despeje\id_ed25519`; no toca tu `~/.ssh`),
-3. entra en tu VPS (te pedirá tu clave de SSH o de `sudo` si hace falta) y ejecuta
-   [`setup-vps.sh`](setup-vps.sh), que crea el usuario `despeje` restringido,
+1. descarga despeje de las [Releases](https://github.com/Joseluk/despeje/releases) y comprueba su SHA-256,
+2. crea una clave SSH propia en `%USERPROFILE%\.despeje` (no toca tu `~/.ssh`),
+3. entra en tu VPS y ejecuta [`setup-vps.sh`](setup-vps.sh), que crea un usuario
+   `despeje` que solo puede abrir túneles,
 4. comprueba que todo funciona y lo deja arrancando al iniciar sesión.
 
 Para **actualizar**, vuelve a ejecutar el mismo comando.
 
 <details>
-<summary>Instalar sin preguntas</summary>
+<summary><b>Instalar sin preguntas</b></summary>
 
 ```powershell
 $env:DESPEJE_VPS='ubuntu@203.0.113.10'; $env:DESPEJE_ISP='movistar'; $env:DESPEJE_MODE='auto'; $env:DESPEJE_YES='1'
@@ -55,14 +134,14 @@ irm https://raw.githubusercontent.com/Joseluk/despeje/main/install.ps1 | iex
 ```
 
 Otras variables: `DESPEJE_SKIP_VPS=1` (si ya preparaste el VPS a mano),
-`DESPEJE_VERSION=v0.1.0` (fijar versión).
+`DESPEJE_VERSION=v0.1.3` (fijar versión).
 </details>
 
 <details>
-<summary>Preparar el VPS a mano</summary>
+<summary><b>Preparar el VPS a mano</b> (sin dar <code>sudo</code> al instalador)</summary>
 
-Si prefieres no dar acceso de `sudo` al instalador, ejecuta en el VPS con la
-clave pública que te muestra el instalador (`%USERPROFILE%\.despeje\id_ed25519.pub`):
+Ejecuta en el VPS, con la clave pública que te muestra el instalador
+(`%USERPROFILE%\.despeje\id_ed25519.pub`):
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Joseluk/despeje/main/setup-vps.sh | sudo bash -s -- 'ssh-ed25519 AAAA... despeje@tupc'
@@ -74,19 +153,33 @@ idempotente; si tu `sshd` tiene `AllowUsers`, añade el usuario con un fichero e
 recargar (si no valida, deshace el cambio).
 </details>
 
+## ¿Y por qué no una VPN?
+
+|                                   | **despeje** | VPN comercial | Cloudflare WARP |
+|-----------------------------------|:-----------:|:-------------:|:---------------:|
+| Solo desvía lo bloqueado          | ✅ | ❌ todo tu tráfico | ❌ todo tu tráfico |
+| Sale por un servidor **tuyo**     | ✅ | ❌ | ❌ |
+| Gratis (si ya tienes un VPS)      | ✅ | ❌ | ✅ |
+| Velocidad del resto de webs       | la tuya | la de la VPN | la de WARP |
+| Servicios que vetan VPNs (streaming, bancos) | siguen en directo | pueden fallar | pueden fallar |
+| Código abierto                    | ✅ | normalmente no | ❌ |
+
+Si no tienes VPS y solo quieres salir del paso, una VPN o WARP funcionan.
+despeje es para quien prefiere no mandar todo su tráfico por un tercero.
+
 ## Uso
 
-No hay nada que hacer: navega como siempre. Para ver qué está pasando:
+No hay que hacer nada: navega como siempre. Para ver qué está pasando:
 
-- **Estado en vivo**: <http://127.0.0.1:9119/status>: IPs bloqueadas ahora,
-  conexiones directas / por el VPS y las últimas que han ido por el túnel.
+- **Estado en vivo**: <http://127.0.0.1:9119/status>, con las IPs bloqueadas
+  ahora, conexiones directas / por el VPS y las últimas que han ido por el túnel.
 - **Log**: `%USERPROFILE%\.despeje\despeje.log`
 - **Configuración**: `%USERPROFILE%\.despeje\config.json` (tras editarla, vuelve a
   ejecutar el instalador o reinicia la tarea `despeje`).
 
 ### Modos
 
-| `mode` | qué va por el VPS |
+| `mode` | Qué va por el VPS |
 |--------|-------------------|
 | `auto` | solo las IPs bloqueadas **ahora** + las que se cuelguen en directo durante un partido (recomendado) |
 | `cdn`  | todos los rangos de Cloudflare **siempre**, haya fútbol o no |
@@ -126,6 +219,9 @@ que prueba cada pieza por separado:
 Si el instalador se cortó en la comprobación, vuelve a ejecutarlo: con «Solo
 actualizar» no toca el VPS y termina de dejarlo en marcha.
 
+¿Nada de esto? [Abre un issue](https://github.com/Joseluk/despeje/issues/new/choose)
+con la salida de `-check`.
+
 ## Desinstalar
 
 ```powershell
@@ -140,22 +236,56 @@ curl -fsSL https://raw.githubusercontent.com/Joseluk/despeje/main/setup-vps.sh |
 
 ## Preguntas
 
-**¿Pierdo velocidad en el resto de webs?** Prácticamente nada. Lo que no está
-bloqueado sale en directo; solo atraviesa despeje en local, que mueve más de
-8 Gbps en un PC normal, así que no es el cuello de botella. Lo único que cambia
-es que, con un proxy configurado, los navegadores no usan HTTP/3 (QUIC) y van
-por HTTP/2, algo que normalmente no se nota.
+<details>
+<summary><b>¿Pierdo velocidad en el resto de webs?</b></summary>
 
-**¿Y lo que va por el VPS?** Va a la velocidad y latencia de tu VPS. Por eso
-`auto` es el modo recomendado: solo pasa por ahí lo que ahora mismo no
-funcionaría de ninguna otra forma.
+Prácticamente nada. Lo que no está bloqueado sale en directo; solo atraviesa
+despeje en local, que mueve más de 8 Gbps en un PC normal, así que no es el
+cuello de botella. Lo único que cambia es que, con un proxy configurado, los
+navegadores no usan HTTP/3 (QUIC) y van por HTTP/2, algo que normalmente no se
+nota.
+</details>
 
-**¿Puede ir por el VPS algo que no está bloqueado?** Solo en dos casos: si lo
-pides en `via_vps`, o si durante un partido una conexión directa se queda
-colgada. En ese caso despeje lo trata como un bloqueo nuevo que aún no está en
-la lista y lo saca por el VPS, pero vuelve a probar esa IP en directo cada
-2 minutos y la suelta en cuanto responde. Un error normal del sitio (conexión
-rechazada) no cuenta, y fuera de los partidos esto no se activa.
+<details>
+<summary><b>¿Y lo que va por el VPS?</b></summary>
+
+Va a la velocidad y latencia de tu VPS. Por eso `auto` es el modo recomendado:
+solo pasa por ahí lo que ahora mismo no funcionaría de ninguna otra forma.
+</details>
+
+<details>
+<summary><b>¿Puede ir por el VPS algo que no está bloqueado?</b></summary>
+
+Solo en dos casos: si lo pides en `via_vps`, o si durante un partido una
+conexión directa se queda colgada. En ese caso despeje lo trata como un bloqueo
+nuevo que aún no está en la lista y lo saca por el VPS, pero vuelve a probar esa
+IP en directo cada 2 minutos y la suelta en cuanto responde. Un error normal del
+sitio (conexión rechazada) no cuenta, y fuera de los partidos esto no se activa.
+</details>
+
+<details>
+<summary><b>¿Qué apps cubre?</b></summary>
+
+Las que usan el proxy de Windows: Edge, Chrome, Firefox (por defecto) y la
+mayoría de programas. Juegos o apps que lo ignoran salen en directo.
+</details>
+
+<details>
+<summary><b>¿Por qué SSH y no WireGuard?</b></summary>
+
+Porque no hay que instalar ni abrir nada en el servidor y no hacen falta
+permisos de administrador en Windows. A cambio solo cubre TCP vía proxy, que es
+lo que usa la web.
+</details>
+
+<details>
+<summary><b>¿Esto es para ver el fútbol pirata?</b></summary>
+
+No. Es para que tu banco, tu tienda o tu repositorio sigan funcionando cuando
+los apagan de rebote. Los datos de bloqueos son de
+[hayahora.futbol](https://hayahora.futbol), que los ofrece precisamente para
+usos así.
+</details>
 
 ### ¿Por qué Windows Defender dice que es un troyano?
 
@@ -179,19 +309,21 @@ reputación, puede volver a pasar. Si te ocurre:
    vuelve a ejecutar el instalador.
 3. **Avisa a Microsoft** del falso positivo en
    <https://www.microsoft.com/wdsi/filesubmission> («Incorrectly detected as
-   malware»), y abre un *issue* aquí para que lo sepamos.
+   malware»), y [abre un *issue*](https://github.com/Joseluk/despeje/issues/new/choose)
+   para que lo sepamos.
 
-**¿Qué apps cubre?** Las que usan el proxy de Windows: Edge, Chrome, Firefox (por
-defecto) y la mayoría de programas. Juegos o apps que lo ignoran salen en directo.
+## Contribuir
 
-**¿Por qué SSH y no WireGuard?** Porque no hay que instalar ni abrir nada en el
-servidor y no hacen falta permisos de administrador en Windows. A cambio solo
-cubre TCP vía proxy, que es lo que usa la web.
+Los *issues* y *pull requests* son bienvenidos: bugs, soporte para más
+operadores, macOS/Linux, traducciones… Mira [CONTRIBUTING.md](CONTRIBUTING.md).
+Si despeje te ha salvado un domingo, dale una ⭐: ayuda a que lo encuentre
+más gente.
 
-**¿Esto es para ver el fútbol pirata?** No. Es para que tu banco, tu tienda o
-tu repositorio sigan funcionando cuando los apagan de rebote. Los datos de
-bloqueos son de [hayahora.futbol](https://hayahora.futbol), que los ofrece
-precisamente para usos así; gracias a su equipo.
+## Agradecimientos
+
+- [hayahora.futbol](https://hayahora.futbol), que mide los bloqueos en tiempo
+  real y publica los datos en abierto. Sin ellos, despeje no existiría.
+- [OONI](https://ooni.org), por documentar el impacto de estos bloqueos.
 
 ## Desarrollo
 
@@ -253,4 +385,5 @@ como hasta ahora.
 
 ## Licencia
 
-[MIT](LICENSE)
+[MIT](LICENSE). Hecho en España, con cariño y cierta frustración, por
+[Joseluk](https://github.com/Joseluk).

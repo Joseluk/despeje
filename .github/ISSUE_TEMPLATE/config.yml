@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: ¿Qué IPs están bloqueadas ahora mismo?
+    url: https://hayahora.futbol
+    about: hayahora.futbol mide los bloqueos de LaLiga en tiempo real.
+  - name: Informar de una vulnerabilidad
+    url: https://github.com/Joseluk/despeje/security/advisories/new
+    about: En privado, por favor; no abras un issue público.
