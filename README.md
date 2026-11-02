@@ -120,6 +120,7 @@ que prueba cada pieza por separado:
 | `El VPS no deja abrir túneles a este usuario` | `sshd` tiene `AllowTcpForwarding no`, `DisableForwarding yes` o un `PermitOpen` restrictivo para `despeje`. Revisa `sshd -T -C user=despeje,host=x,addr=1.2.3.4`. |
 | `El VPS acepta el túnel pero no logra salir a internet` | El VPS no llega a la web: comprueba con `curl -4 https://www.cloudflare.com` desde el VPS, y que no esté también en España. |
 | `Tu conexión bloquea ...? no, responde en directo` | No es un error: ahora mismo esa IP no está bloqueada para ti. |
+| Windows Defender lo detecta como troyano (`Trojan:Win32/Bearfoos.A!ml` o parecido) | Falso positivo: mira [la pregunta sobre el antivirus](#por-qué-windows-defender-dice-que-es-un-troyano). |
 | Una web te da «Access Denied» o te pide verificar que no eres un robot | Seguramente esa conexión salió por el VPS y el servicio desconfía de IPs de centros de datos (pasa con Akamai: TikTok, algunos bancos…). Míralo en `ultimas_por_vps` / `ips_aprendidas` de <http://127.0.0.1:9119/status> y añade el dominio a `direct`. |
 
 Si el instalador se cortó en la comprobación, vuelve a ejecutarlo: con «Solo
@@ -155,6 +156,30 @@ colgada. En ese caso despeje lo trata como un bloqueo nuevo que aún no está en
 la lista y lo saca por el VPS, pero vuelve a probar esa IP en directo cada
 2 minutos y la suelta en cuanto responde. Un error normal del sitio (conexión
 rechazada) no cuenta, y fuera de los partidos esto no se activa.
+
+### ¿Por qué Windows Defender dice que es un troyano?
+
+Las detecciones terminadas en `!ml` (como `Trojan:Win32/Bearfoos.A!ml`) no
+son firmas de malware conocido: son el modelo de *machine learning* de Defender
+juzgando el comportamiento de un programa nuevo y sin firmar. despeje hace
+cosas que, vistas sin contexto, se parecen a un troyano de acceso remoto: corre
+sin ventana, arranca con la sesión, usa el proxy de Windows y abre túneles SSH.
+
+Lo hemos reducido todo lo posible: los binarios llevan descripción, versión e
+icono, y el proceso en segundo plano ya no toca el proxy de Windows (lo
+configura el instalador una vez). Pero hasta que un binario nuevo gana
+reputación, puede volver a pasar. Si te ocurre:
+
+1. **Comprueba que tu binario es el oficial**: su SHA-256 debe coincidir con
+   `SHA256SUMS` de la [release](https://github.com/Joseluk/despeje/releases)
+   (`Get-FileHash $env:USERPROFILE\.despeje\despejew.exe`). Son compilados por
+   GitHub Actions a partir de este código.
+2. **Permítelo**: Seguridad de Windows → Protección antivirus → Historial de
+   protección → la amenaza → Acciones → *Permitir en el dispositivo*. Después,
+   vuelve a ejecutar el instalador.
+3. **Avisa a Microsoft** del falso positivo en
+   <https://www.microsoft.com/wdsi/filesubmission> («Incorrectly detected as
+   malware»), y abre un *issue* aquí para que lo sepamos.
 
 **¿Qué apps cubre?** Las que usan el proxy de Windows: Edge, Chrome, Firefox (por
 defecto) y la mayoría de programas. Juegos o apps que lo ignoran salen en directo.

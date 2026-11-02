@@ -168,6 +168,13 @@ Step 'Comprobando'
 & $Exe -check -config $Cfg
 if ($LASTEXITCODE -ne 0) { throw "La comprobacion ha fallado. Revisa $Cfg y vuelve a ejecutar el instalador." }
 
+# El proxy de Windows se configura una sola vez, aqui, a la vista; el proceso en
+# segundo plano no lo toca (cambiarlo en cada arranque es lo que hacen los troyanos).
+if (([IO.File]::ReadAllText($Cfg) | ConvertFrom-Json).system_proxy -ne $false) {
+    & $Exe -sysproxy-on -config $Cfg
+    if ($LASTEXITCODE -ne 0) { throw 'No se pudo configurar el proxy de Windows' }
+}
+
 # --- 5. Arranque al iniciar sesion ----------------------------------------------
 $action = New-ScheduledTaskAction -Execute (Join-Path $Dest 'despejew.exe') -Argument "-config `"$Cfg`"" -WorkingDirectory $Dest
 $trigger = New-ScheduledTaskTrigger -AtLogOn -User "$env:USERDOMAIN\$env:USERNAME"
@@ -186,7 +193,25 @@ foreach ($i in 1..10) {
 }
 Write-Host ''
 if ($ok) { Step 'Listo: despeje esta funcionando y arrancara solo al iniciar sesion.' }
-else { Write-Host "!! La tarea esta creada pero aun no responde; mira el log en $Dest\despeje.log" -ForegroundColor Yellow }
+else {
+    $blocked = $null
+    try {
+        $blocked = Get-MpThreatDetection -ErrorAction Stop |
+            Where-Object { ($_.Resources -join ' ') -like "*$Dest*" } |
+            Sort-Object InitialDetectionTime -Descending | Select-Object -First 1
+    } catch {}
+    if ($blocked) {
+        $name = (Get-MpThreat -ErrorAction SilentlyContinue | Where-Object ThreatID -eq $blocked.ThreatID | Select-Object -First 1).ThreatName
+        Write-Host "!! Windows Defender ha bloqueado despeje ($name)." -ForegroundColor Yellow
+        Write-Host '   Es un falso positivo de su deteccion por comportamiento (!ml): un programa sin ventana'
+        Write-Host '   que arranca con la sesion y abre tuneles. El codigo esta en GitHub y puedes comprobar'
+        Write-Host "   que tu binario es el de la release: Get-FileHash $Dest\despejew.exe"
+        Write-Host '   Para usarlo: Seguridad de Windows > Proteccion antivirus > Historial de proteccion >'
+        Write-Host '   esa amenaza > Acciones > Permitir en el dispositivo, y vuelve a ejecutar el instalador.'
+    } else {
+        Write-Host "!! La tarea esta creada pero aun no responde; mira el log en $Dest\despeje.log" -ForegroundColor Yellow
+    }
+}
 Write-Host "   Estado:      http://$listen/status"
 Write-Host "   Log:         $Dest\despeje.log"
 Write-Host "   Desinstalar: irm $Raw/uninstall.ps1 | iex"

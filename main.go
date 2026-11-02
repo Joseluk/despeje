@@ -28,6 +28,7 @@ var version = "dev"
 func main() {
 	cfgPath := flag.String("config", defaultConfigPath(), "fichero de configuración")
 	check := flag.Bool("check", false, "comprueba la lista de bloqueos y el VPS, y sale")
+	sysOn := flag.Bool("sysproxy-on", false, "configura Windows para usar despeje (PAC) y sale")
 	sysOff := flag.Bool("sysproxy-off", false, "quita el proxy de despeje de Windows y sale")
 	verbose := flag.Bool("v", false, "registra también las conexiones directas")
 	keygen := flag.String("keygen", "", "crea (si no existe) una clave SSH en esta ruta, imprime la pública y sale")
@@ -70,6 +71,17 @@ func main() {
 
 	pacAddr := pacAddress(cfg.Listen)
 	pacBase := "http://" + pacAddr + "/proxy.pac"
+	if *sysOn {
+		replaced, changed, err := EnableSystemProxy(pacBase)
+		if err != nil {
+			fatal("%v", err)
+		}
+		if replaced != "" {
+			fmt.Printf("aviso: sustituye al script de proxy que tenías (%s)\n", replaced)
+		}
+		fmt.Println(map[bool]string{true: "Windows usa ahora " + pacBase, false: "Windows ya usaba " + pacBase}[changed])
+		return
+	}
 	if *sysOff {
 		removed, err := DisableSystemProxy(pacBase)
 		if err != nil {
@@ -139,18 +151,13 @@ func main() {
 		}
 	}()
 
+	// Normalmente el instalador ya lo dejó puesto (-sysproxy-on) y aquí no se
+	// toca nada; solo se repone si alguien lo ha cambiado.
 	if *cfg.SystemProxy {
-		// El parámetro evita que WinINet sirva un PAC cacheado de otra sesión.
-		pacURL := fmt.Sprintf("%s?v=%d", pacBase, time.Now().Unix())
-		restore, err := EnableSystemProxy(pacURL, pacBase)
-		if err != nil {
+		if _, changed, err := EnableSystemProxy(pacBase); err != nil {
 			log.Printf("no se pudo configurar el proxy de Windows: %v", err)
-		} else {
-			log.Printf("Windows usa ahora %s", pacURL)
-			defer func() {
-				restore()
-				log.Printf("proxy de Windows restaurado")
-			}()
+		} else if changed {
+			log.Printf("Windows usa ahora %s", pacBase)
 		}
 	}
 

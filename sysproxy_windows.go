@@ -115,24 +115,28 @@ func setProxy(st proxyState) error {
 	return nil
 }
 
-// EnableSystemProxy apunta Windows al PAC de despeje y devuelve una función
-// que deja la configuración como estaba.
-func EnableSystemProxy(pacURL, pacBase string) (restore func(), err error) {
+// EnableSystemProxy apunta Windows al PAC de despeje si no lo está ya.
+// Devuelve el PAC ajeno que había antes (si lo había) y si ha cambiado algo.
+//
+// Se escribe una sola vez y se deja puesto: el PAC termina en DIRECT, así que
+// con despeje parado se navega igual. Reescribir el proxy en cada arranque
+// desde un proceso en segundo plano es justo lo que hacen los troyanos
+// bancarios, y Defender lo trata como tal.
+func EnableSystemProxy(pacURL string) (replaced string, changed bool, err error) {
 	prev, err := queryProxy()
 	if err != nil {
-		return nil, err
+		return "", false, err
 	}
-	if strings.HasPrefix(prev.AutoConfigURL, pacBase) { // restos de un cierre brusco
-		prev.AutoConfigURL = ""
-		prev.Flags &^= proxyTypeAutoURL
+	if prev.AutoConfigURL == pacURL && prev.Flags&proxyTypeAutoURL != 0 {
+		return "", false, nil
+	}
+	if prev.AutoConfigURL != "" && !strings.HasPrefix(prev.AutoConfigURL, pacURL) {
+		replaced = prev.AutoConfigURL
 	}
 	next := prev
 	next.Flags |= proxyTypeAutoURL | proxyTypeDirect
 	next.AutoConfigURL = pacURL
-	if err := setProxy(next); err != nil {
-		return nil, err
-	}
-	return func() { setProxy(prev) }, nil
+	return replaced, true, setProxy(next)
 }
 
 // DisableSystemProxy quita el PAC de despeje si es el que está puesto.

@@ -15,11 +15,23 @@ jobs:
         with:
           go-version-file: go.mod
       - run: go test ./...
+      # Metadatos de Windows (descripción, versión, icono, manifiesto asInvoker).
+      # Un .exe anónimo y sin símbolos pesa en contra en la heurística de Defender.
+      - name: Windows resources
+        run: |
+          v="${GITHUB_REF_NAME#v}"; v="${v%%-*}.0"
+          go run github.com/tc-hib/go-winres@v0.3.3 simply \
+            --arch amd64,arm64 --manifest cli --icon assets/icon.png \
+            --product-name despeje --product-version "$v" --file-version "$v" \
+            --file-description "despeje - saca por tu VPS las IPs bloqueadas por LaLiga" \
+            --original-filename despeje.exe \
+            --copyright "Copyright (c) 2026 Jose Garcia - MIT - github.com/Joseluk/despeje"
+          ls -la *.syso
       - name: Build
         run: |
           mkdir dist
           for arch in amd64 arm64; do
-            flags="-s -w -X main.version=${GITHUB_REF_NAME}"
+            flags="-X main.version=${GITHUB_REF_NAME}"
             GOOS=windows GOARCH=$arch CGO_ENABLED=0 go build -trimpath -ldflags "$flags" -o dist/despeje-windows-$arch.exe .
             GOOS=windows GOARCH=$arch CGO_ENABLED=0 go build -trimpath -ldflags "$flags -H=windowsgui" -o dist/despejew-windows-$arch.exe .
           done
