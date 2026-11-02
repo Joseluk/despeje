@@ -18,13 +18,13 @@ body:
     id: check
     attributes:
       label: Salida de la comprobación
-      description: "Ejecuta `& $env:USERPROFILE\.despeje\despeje.exe -check` en un PowerShell normal y pega aquí la salida (puedes tapar la IP del VPS)."
+      description: 'Ejecuta `& $env:USERPROFILE\.despeje\despeje.exe -check` en un PowerShell normal y pega aquí la salida (puedes tapar la IP del VPS).'
       render: text
   - type: input
     id: version
     attributes:
       label: Versión
-      description: "`& $env:USERPROFILE\.despeje\despeje.exe -version`"
+      description: '`& $env:USERPROFILE\.despeje\despeje.exe -version`'
       placeholder: despeje v0.1.3
   - type: dropdown
     id: isp
@@ -41,5 +41,5 @@ body:
     id: log
     attributes:
       label: Log
-      description: "Las últimas líneas de `%USERPROFILE%\.despeje\despeje.log`, si hay algo raro."
+      description: 'Las últimas líneas de `%USERPROFILE%\.despeje\despeje.log`, si hay algo raro.'
       render: text

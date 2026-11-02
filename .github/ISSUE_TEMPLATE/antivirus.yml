@@ -30,7 +30,7 @@ body:
     id: hash
     attributes:
       label: SHA-256 del fichero detectado
-      description: "`Get-FileHash $env:USERPROFILE\.despeje\despejew.exe` (debe coincidir con SHA256SUMS de la release)."
+      description: '`Get-FileHash $env:USERPROFILE\.despeje\despejew.exe` (debe coincidir con SHA256SUMS de la release).'
   - type: checkboxes
     id: reported
     attributes:
