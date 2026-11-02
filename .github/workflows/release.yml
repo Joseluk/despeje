@@ -88,14 +88,41 @@ jobs:
 
       - name: Checksums
         run: cd dist && sha256sum * > SHA256SUMS && cat SHA256SUMS
+      # Cabecera de las notas de la release. SignPath Foundation pide que la
+      # página de descarga mencione su firma; las notas generadas van detrás.
+      - name: Release notes
+        run: |
+          {
+            echo '**Instalar o actualizar** (PowerShell, sin administrador):'
+            echo
+            echo '```powershell'
+            echo 'irm https://raw.githubusercontent.com/Joseluk/despeje/main/install.ps1 | iex'
+            echo '```'
+            echo
+            echo 'El instalador descarga estos binarios y comprueba su SHA-256 con `SHA256SUMS`.'
+            echo
+            echo '### Code signing policy'
+            echo
+            if [ "$SIGN" = true ]; then
+              echo 'Los `.exe` de esta release están firmados con Authenticode.'
+            else
+              echo 'Los `.exe` de esta release **no están firmados**: la firma con SignPath Foundation está pendiente de aprobación.'
+            fi
+            echo 'Free code signing provided by [SignPath.io](https://about.signpath.io/), certificate by [SignPath Foundation](https://signpath.org/).'
+            echo 'Roles y política de privacidad: [Code signing policy](https://github.com/Joseluk/despeje#code-signing-policy).'
+          } > release-notes.md
+          cat release-notes.md
       - name: Publish
         if: startsWith(github.ref, 'refs/tags/v')
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" dist/* --title "$GITHUB_REF_NAME" --generate-notes
+        # Con --notes-file y --generate-notes, gh añade las notas generadas detrás.
+        run: gh release create "$GITHUB_REF_NAME" dist/* --title "$GITHUB_REF_NAME" --notes-file release-notes.md --generate-notes
       - name: Keep build (manual runs)
         if: "!startsWith(github.ref, 'refs/tags/v')"
         uses: actions/upload-artifact@v4
         with:
           name: despeje-build
-          path: dist/
+          path: |
+            dist/
+            release-notes.md
